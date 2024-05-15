@@ -7,13 +7,23 @@
 /* Project Headers */
 #include "global.h"
 
+/* Constant Expressions: CPU Status Flags */
+constexpr U8 carryFlag               = 0x01;
+constexpr U8 zeroFlag                = 0x02;
+constexpr U8 interruptDisableFlag    = 0x04;
+constexpr U8 decimalModeFlag         = 0x08;
+constexpr U8 breakFlag               = 0x10;
+constexpr U8 unusedFlag              = 0x20;
+constexpr U8 overflowFlag            = 0x40;
+constexpr U8 negativeFlag            = 0x80;
+
 
 class RP2A03
 {
     private:
         /* Registers */
         Reg16* PC;   /* 16-bit Programm Counter Register */
-        Reg8* SP;    /* 8-bit Programm Counter Register */
+        Reg8* SP;    /* 8-bit Stack Pointer Register */
         Reg8* A;     /* 8-bit Accumulator Register */
         Reg8* X;     /* 8-bit Index Register */
         Reg8* Y;     /* 8-bit Index Register (can't be used with SP) */
@@ -51,9 +61,9 @@ class RP2A03
         void ABSIN(); void ZPAGE(); void XIZPG(); void YIZPG(); void XIZPI(); void ZPIYI();
         void RELAT();
 
-        /* Instruction Vector Null Function Pointers */
-        void NII();     /* Null Instruction Index */
-        void NIVIM();   /* Null Instruction Vector Index Mode */
+        /* Instruction Vector Null Functions */
+        void NII();     /* Null Instruction Index (Instruction) */
+        void NIVIM();   /* Null Instruction Vector Index Mode (Address Mode) */
 
         /* Instruction Prototype */
         struct Instr_t
