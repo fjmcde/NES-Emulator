@@ -1,6 +1,6 @@
 # Compiler setup
 CC = g++
-CFLAGS = -Wall -Wextra -O3 -g -pthread --std=c++2a
+CFLAGS = -Wall -Wextra -O3 -g -std=c++17
 
 # Optional DEBUG compiler flag for compiling with debugging code:
 # $ make DEBUG=1
@@ -21,29 +21,23 @@ HEADER_FILES    = $(wildcard $(HEADER_DIR)/*.h)
 OBJ_DIR     = obj
 OBJ_FILES   = $(patsubst $(SRC_DIR)/%.cpp,$(OBJ_DIR)/%.o,$(SRC_FILES)) $(OBJ_DIR)/main.o
 
-# Output executable name
-EXECUTABLE = nesEmu
-
 # Cross-platform settings
 ifeq ($(OS), Windows_NT)
     # Windows configuration
     RM                          = del /Q /F
-    RM_EXECUTABLE_EXTENSION     = .exe
-    RM_OBJ_FILES                = $(subst /, \, $(OBJ_FILES))
-    RM_ANS_FILES                = $(subst /, \, $(ANS_FILES))
-    RM_AG_FILES                 = $(subst /, \, $(AUTOGRADE_TESTS))
+    RM_OBJ_FILES 				= $(foreach file,$(OBJ_FILES),$(subst /,\,$(file)))
     RMDIR                       = rmdir /S /Q
     MKDIR                       = mkdir
+    EXECUTABLE 					= nesEmu.exe
 else
     # Unix configuration
     RM                          = rm -f
-    RM_EXECUTABLE_EXTENSION     = ""
     RM_OBJ_FILES                = $(OBJ_FILES)
-    RM_ANS_FILES                = $(ANS_FILES)
-    RM_AG_FILES                 = $(AUTOGRADE_TESTS)
     RMDIR                       = rm -rf
     MKDIR                       = mkdir
+    EXECUTABLE 					= nesEmu
 endif
+
 
 #################
 #    Targets    #
@@ -60,7 +54,6 @@ $(EXECUTABLE): $(OBJ_FILES) $(OBJ_DIR)/main.o
 $(OBJ_DIR):
 	$(MKDIR) $(OBJ_DIR)
 
-
 # Object file(s) target
 # Generate object files from source files
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(HEADER_FILES) | $(OBJ_DIR)
@@ -68,7 +61,8 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(HEADER_FILES) | $(OBJ_DIR)
 
 # Cleanup object files/directory, and executable
 clean:
-	$(RM) $(RM_OBJ_FILES) $(EXECUTABLE)$(RM_EXECUTABLE_EXTENSION)
+	$(RM) $(RM_OBJ_FILES)
+	$(RM) $(EXECUTABLE)
 	$(RMDIR) $(OBJ_DIR)
 
 # Not real build targets
