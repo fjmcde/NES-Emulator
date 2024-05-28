@@ -1,8 +1,16 @@
 #include "../inc/main.h"
 
-#include "../inc/memory_map.h"
 
 int main(int argc, char* argv[])
 {
-    RP2A03* cpu;
+    (void)argc; (void)argv;
+
+    RP2A03 cpu;
+
+    cpu.reset();
+
+    while(1)
+    {
+        cpu.CPU_Cycle();
+    }
 }
