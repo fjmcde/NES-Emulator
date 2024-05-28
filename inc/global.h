@@ -5,11 +5,12 @@
 #include <cstdint>
 /* Project Headers */
 
-typedef uint8_t     U8;
-typedef uint16_t    U16;
-typedef U8          Reg8;
-typedef U16         Reg16;
-typedef U8          Bus8;
-typedef U16         Bus16;
+/* Type aliases */
+using U8 = uint8_t;
+using U16 = uint16_t;
+using Reg8 = uint8_t;
+using Reg16 = uint16_t;
+using Addr16 = uint16_t;
+
 
 #endif /* GLOBAL_H */
