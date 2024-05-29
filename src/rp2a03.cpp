@@ -9,267 +9,331 @@ RP2A03::RP2A03()
 RP2A03::~RP2A03(){}
 
 
+/**
+ * @brief Executes a single loop of the CPU pipeline
+ * 
+ */
 void RP2A03::CPU_Cycle(void)
 {
-    // Fetch the next instruction from program ROM
-    U8 nextInstruction = fetch();
-
-    // Decode the instruction
-    decode(nextInstruction);
-
-    // Execute ins
-    executeInstruction();
+    U8 opcode = fetch();
+    Instr_t nextInstruction = decode(opcode);
+    executeInstruction(&nextInstruction);
 }
 
 
-void RP2A03::applyAddressingMode(void)
+/**
+ * @brief Applies the correct addressing mode to an instruction
+ * 
+ * @param instr Instruction to apply addressing mode on
+ */
+void RP2A03::applyAddressingMode(Instr_t* instr)
 {
     // Addressing Mode jump table
-    switch(currentInstruction.addrMode)
+    switch(instr->addrMode)
     {
-        case AddrMode::impli:
-            /* In implied addressing, the address containing the operand is 
-               implicitly stated in the opcode mnumonic. */
+        case AddrMode::absin:
+            /* In absolute indirect addressing, the second byte of the instruction contains the
+               low order byte of a memory location. The high order byte of that memory location
+               are contained in the third byte of the instruction. */
 
-            currentInstruction.firstOperand = nullptr;
-            currentInstruction.secondOperand = nullptr;
-            break;
-        case AddrMode::accum:
-            /* In accumulator addressing, the one byte instruction implies
-               operation on the accumulator (A) register. */
+            U8 lowByte = memBus->readFromBus(PC + 1);
+            U8 highByte = memBus->readFromBus(PC + 2);
+            U16 effectiveAddress = (highByte << 8) | lowByte;
 
-            *currentInstruction.firstOperand = A;
-            currentInstruction.secondOperand = nullptr;
-            break;
-        case AddrMode::immed:
-            /* In immediate addressing, the second byte of the instruction
-               contains the operand, with no further memory addressing required. */
+            U8 targetLowByte = memBus->readFromBus(effectiveAddress);
+            U8 targetHighByte = memBus->readFromBus(effectiveAddress + 1);
+            U16 targetAddress = (targetHighByte << 8) | targetLowByte;
 
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            currentInstruction.secondOperand = nullptr;
+            instr->operand = targetAddress; 
             break;
         case AddrMode::absol:
-            /* In absolute addressing, the second byte of the instruction
-               specifies the eight low order bits of the effective address
-               while the third byte specifies the eight high order bits */
+            /* In absolute addressing, the second byte of the instruction specifies the eight low
+               order bits of the effective address while the third byte specifies the eight high
+               order bits */
 
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            *currentInstruction.secondOperand = memBus->readFromBus(PC + 2);
+            U8 lowByte = memBus->readFromBus(PC + 1);
+            U8 highByte = memBus->readFromBus(PC + 2);
+            U16 effectiveAddress = (highByte << 8) | lowByte;
+            instr->operand = effectiveAddress;
             break;
-        case AddrMode::xiabs:
-            /* In X-indexed absolute addressing, the effective address is
-               formed by adding the contents of the X register to the address
-               contained in the second and third bytes of the instruction. */
+        case AddrMode::accum:
+            /* In accumulator addressing, the one byte instruction implies operation on the accumulator (A)
+               register. */
 
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            *currentInstruction.secondOperand = memBus->readFromBus(PC + 2);
+            instr->operand = A;
             break;
-        case AddrMode::yiabs:
-            /* In Y-indexed absolute addressing, the effective address is
-               formed by adding the contents of the Y register to the address
-               contained in the second and third bytes of the instruction. */
+        case AddrMode::immed:
+            /* In immediate addressing, the second byte of the instruction contains the operand, with no
+               further memory addressing required. */
 
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            *currentInstruction.secondOperand = memBus->readFromBus(PC + 2);
+            U8 immediateValue = memBus->readFromBus(PC + 1);
+            instr->operand = immediateValue;
             break;
-        case AddrMode::absin:
-            /* In absolute indirect addressing, the second byte of the instruction
-               contains the low order byte of a memory location. The high order byte
-               of that memory location are contained in the third byte of the instruction. */
-
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            *currentInstruction.secondOperand = memBus->readFromBus(PC + 2);
-            break;
-        case AddrMode::zpage:
-            /* In zero page addressing, the second byte of the insturction contains
-               the low order byte of a memory location. The high byte of the memory location
-               is assumed to be zero (0x00) */
-            
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            *currentInstruction.secondOperand = 0x00;
-            break;
-        case AddrMode::xizpg:
-            /* In X-indexed zero page adressing, the effective address is calculated by
-               adding the second byte to the contents of the X index (X) register. Since
-               this is a form of zero page addressing, the content of the second byte 
-               references a location in zero page memory. No carry is added to the high
-               order byte of memory and crossing a page boundary does not occur */
-
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            currentInstruction.secondOperand = &X;
-            break;
-        case AddrMode::yizpg:
-            /* In Y-indexed zero page adressing, the effective address is calculated by
-               adding the second byte to the contents of the Y index (Y) register. Since
-               this is a form of zero page addressing, the content of the second byte 
-               references a location in zero page memory. No carry is added to the high
-               order byte of memory and crossing a page boundary does not occur */
-
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            currentInstruction.secondOperand = nullptr;
-            break;
-        case AddrMode::xizpi:
-            /* In X-index zero page indirect addressing, the second byte of the instruction
-               is added to the contents of the X index (X) register and discards the carry.
-               The result of this addition points to a memory location on page zero which contains
-               the low order byte of the effective address. The next memory location in page zero
-               contains the high order byte of the effective address. Both memory locations specifying
-               the effective address must be in page zero. */
-
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            currentInstruction.secondOperand = &X;
-            break;
-        case AddrMode::yizpi:
-            /* In Y-index zero page indirect addressing, the second byte of the instruction
-               is added to the contents of the Y index (Y) register and discards the carry.
-               The result of this addition points to a memory location on page zero which contains
-               the low order byte of the effective address. The next memory location in page zero
-               contains the high order byte of the effective address. Both memory locations specifying
-               the effective address must be in page zero. */
-
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            currentInstruction.secondOperand = &Y;
+        case AddrMode::impli:
+            /* In implied addressing, the address containing the operand is implicitly stated in the opcode
+               mnumonic. */
             break;
         case AddrMode::relat:
             /* In relative addressing, the second byte of the instruction is an operand. This operand
                is an offset which is added to the program counter when the counter is set at the next
                instruction. The range of the offset is -128 - +127 (signed byte). */
 
-            *currentInstruction.firstOperand = memBus->readFromBus(PC + 1);
-            currentInstruction.secondOperand = nullptr;
+            int8_t offset = static_cast<int8_t>(memBus->readFromBus(PC + 1));
+            instr->operand = PC + offset;
+            break;		
+        case AddrMode::xiabs:
+            /* In X-indexed absolute addressing, the effective address is formed by adding the contents
+             of the X register to the address contained in the second and third bytes of the instruction. */
+
+            U8 lowByte = memBus->readFromBus(PC + 1);
+            U8 highByte = memBus->readFromBus(PC + 2);
+            U16 address = (highByte << 8) | lowByte;
+
+            U16 effectiveAddress = address + X;
+            instr->operand = effectiveAddress;
+            break;
+        case AddrMode::xizpg:
+            /* In X-indexed zero page adressing, the effective address is calculated by adding the
+               second byte to the contents of the X index (X) register. Since this is a form of zero
+               page addressing, the content of the second byte references a location in zero page memory.
+               No carry is added to the high order byte of memory and crossing a page boundary does not
+               occur */
+
+            U8 zeroPageAddress = memBus->readFromBus(PC + 1);
+            U16 effectiveAddress = (zeroPageAddress + X) & 0xFF;
+
+            // Ensure wrapping around zero page memory (0x0000 - 0x00FF)
+            effectiveAddress &= 0xFF;
+
+            instr->operand = effectiveAddress;
+            break;
+        case AddrMode::xizpi:
+            /* In X-index zero page indirect addressing, the second byte of the instruction is added to
+               the contents of the X index (X) register and discards the carry. The result of this addition
+               points to a memory location on page zero which contains the low order byte of the effective
+               address. The next memory location in page zero contains the high order byte of the effective
+               address. Both memory locations specifying the effective address must be in page zero. */
+
+            U8 zeroPageAddress = memBus->readFromBus(PC + 1);
+            U16 effectiveAddress = zeroPageAddress + X;
+            effectiveAddress &= 0xFF;
+
+            U8 lowByte = memBus->readFromBus(effectiveAddress);
+            U8 highByte = memBus->readFromBus((effectiveAddress + 1) & 0xFF);
+            U16 finalAddress = (highByte << 8) | lowByte;
+
+            instr->operand = finalAddress;
+            break;
+        case AddrMode::yiabs:
+            /* In Y-indexed absolute addressing, the effective address is formed by adding the contents
+               of the Y register to the address contained in the second and third bytes of the instruction. */
+
+            U8 lowByte = memBus->readFromBus(PC + 1);
+            U8 highByte = memBus->readFromBus(PC + 2);
+            U16 address = (highByte << 8) | lowByte;
+
+            U16 effectiveAddress = address + Y;
+            instr->operand = effectiveAddress;
+            break;
+        case AddrMode::yizpg:
+            /* In Y-indexed zero page adressing, the effective address is calculated by adding the
+               second byte to the contents of the Y index (Y) register. Since this is a form of zero
+               page addressing, the content of the second byte references a location in zero page memory.
+               No carry is added to the high order byte of memory and crossing a page boundary does not
+               occur */
+
+            U8 zeroPageAddress = memBus->readFromBus(PC + 1);
+            U16 effectiveAddress = zeroPageAddress + Y;
+
+            // Ensure wrapping around zero page memory (0x0000 - 0x00FF)
+            effectiveAddress &= 0xFF;
+            
+            instr->operand = effectiveAddress;
+            break;
+        case AddrMode::yizpi:
+            /* In Y-index zero page indirect addressing, the second byte of the instruction is added to
+               the contents of the Y index (Y) register and discards the carry. The result of this addition
+               points to a memory location on page zero which contains the low order byte of the effective
+               address. The next memory location in page zero contains the high order byte of the effective
+               address. Both memory locations specifying the effective address must be in page zero. */
+
+            U8 zeroPageAddress = memBus->readFromBus(PC + 1);
+            U16 effectiveAddress = zeroPageAddress + Y;
+            effectiveAddress &= 0xFF;
+
+            U8 lowByte = memBus->readFromBus(effectiveAddress);
+            U8 highByte = memBus->readFromBus((effectiveAddress + 1) & 0xFF);
+            U16 finalAddress = (highByte << 8) | lowByte;
+
+            instr->operand = finalAddress;
+            break;
+        case AddrMode::zpage:
+            /* In zero page addressing, the second byte of the insturction contains the low order byte of a
+               memory location. The high byte of the memory location is assumed to be zero (0x00) */
+
+            U8 lowByte = memBus->readFromBus(PC + 1);
+
+            // Explicitly set the high byte to 0x00
+            U8 zeroPageAddress = 0x00FF & static_cast<U16>(lowByte);
+
+            instr->operand = zeroPageAddress;
             break;
         default: /* AddrMode::nivim */
             /* Null Instruction Vector Index Mode: Invalid opcode */
             
-            currentInstruction.firstOperand = nullptr;
-            currentInstruction.secondOperand = nullptr;
+            instr->operand = 0;
             break;
     }
 }
 
 
+/**
+ * @brief Fetches the next opcode byte from memory
+ * 
+ * @return opcode fetched from memory 
+ */
 U8 RP2A03::fetch(void)
 {
     PC++;
-    // U16 instrAddr = 
-
-    return memBus->readFromBus(PC);
+    U16 instrAddr = PC + MemoryMap::MEM_PRG_ROM_LOWER_BASE_ADDR;
+    return memBus->readFromBus(instrAddr);
 }
 
 
-void RP2A03::decode(U8 opCode)
+/**
+ * @brief Decodes the current instruction opcode
+ * 
+ * @details Indexes the instruction array to decode the opcode
+ * 
+ * @param opCode Used to index the instr array
+ * 
+ * @return Decoded instruction 
+ */
+RP2A03::Instr_t RP2A03::decode(U8 opCode)
 {
     // Decode the opCode byte read from ROM
-    currentInstruction = instr[opCode];
+    Instr_t instruction = instrArray[opCode];
 
     // Apply the correct addressing mode on the current instruction
-    applyAddressingMode();
+    applyAddressingMode(&instruction);
+
+    return instruction;
 }
 
 
-void RP2A03::executeInstruction(void)
+/**
+ * @brief Wrapper for executing instruction function pointers
+ * 
+ */
+void RP2A03::executeInstruction(Instr_t* instr)
 {
-    (this->*currentInstruction.func)(*currentInstruction.firstOperand, *currentInstruction.secondOperand);
+    (this->*(instr->func))(instr->operand);
 }
 
+/**
+ * @brief Executes the CPU reset vector
+ * 
+ */
 void RP2A03::reset()
 {
     // Initialize status register
-    status = { 0, 0, 1, 0, 0, 1, 0, 0 };
+    status = Flags::RESET;
 
     // Initialize SP
-    SP = (U8)MEM_RAM_STACK_BASE_ADDR;
+    SP = (U8)MemoryMap::MEM_RAM_STACK_BASE_ADDR;
 
     // Initialize PC to the reset vector
-    PC = MEM_INT_RESET_BASE_ADDR;
+    PC = MemoryMap::MEM_INT_RESET_BASE_ADDR;
 }
+
 
 void RP2A03::NMI(){}
 void RP2A03::IRQ(){}
-
-
-void RP2A03::setFlag(U8 flags)
-{
-    if(flags & carryFlag){ status.C = 0x1; }
-    if(flags & zeroFlag){ status.Z = 0x1; }
-    if(flags & interruptDisableFlag){ status.I = 0x1; }
-    if(flags & decimalModeFlag){ status.D = 0x1; }
-    if(flags & breakFlag){ status.B = 0x1; }
-    if(flags & unusedFlag){ status.UNUSED = 0x1; }
-    if(flags & overflowFlag){ status.V = 0x1; }
-    if(flags & negativeFlag){ status.N = 0x1; }
-}
 
 
 /******************************************************************
  *                        Instructions                            *
  ******************************************************************/
 
-void RP2A03::LDA(U8 a, U8 b)
+/**
+ * @brief Load Accumulator with Memory
+ * 
+ * @param a Value to load into the accumulator 
+ * @param b OperandB
+ */
+void RP2A03::LDA(U16 operand)
 {
-    (void)a; (void)b;
+    // Load the value of a into the accumulator
+    A = operand;
 
-    // Raise flags if needed
-    U8 flags = 0x0;
-    if(A == 0){ flags |= zeroFlag; }
-    else if(A & 0x80){ flags |= negativeFlag; }
+    U8 flags = Flags::CLEAR;
 
-    setFlag(flags);
+    // Raise status flags if needed    
+    if(A == 0)
+    {
+        flags |= Flags::ZERO_FLAG; 
+    }
+    else if(A & Flags::NEGATIVE_FLAG)
+    {
+        flags |= Flags::NEGATIVE_FLAG;
+    }
+
+    status |= flags;
 }
 
-void RP2A03::LDX(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::LDY(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::STA(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::STX(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::STY(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::TAX(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::TAY(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::TSX(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::TXA(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::TXS(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::TYA(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::PHA(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::PHP(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::PLA(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::PLP(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::ASL(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::LSR(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::ROL(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::ROR(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::AND(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BIT(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::EOR(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::ORA(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::ADC(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::CMP(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::CPX(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::CPY(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::SBC(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::DEC(U8 a, U8 b){ (void)a; (void)b; } 
-void RP2A03::DEX(U8 a, U8 b){ (void)a; (void)b; } 
-void RP2A03::DEY(U8 a, U8 b){ (void)a; (void)b; } 
-void RP2A03::INC(U8 a, U8 b){ (void)a; (void)b; } 
-void RP2A03::INX(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::INY(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BRK(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::JMP(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::JSR(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::RTI(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::RTS(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BCC(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BCS(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BEQ(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BMI(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BNE(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BPL(U8 a, U8 b){ (void)a; (void)b; } 
-void RP2A03::BVC(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::BVS(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::CLC(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::CLD(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::CLI(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::CLV(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::SEC(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::SED(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::SEI(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::NOP(U8 a, U8 b){ (void)a; (void)b; }
-void RP2A03::NII(U8 a, U8 b){ (void)a; (void)b; }
+void RP2A03::LDX(U16 operand){ (void)operand; }
+void RP2A03::LDY(U16 operand){ (void)operand; }
+void RP2A03::STA(U16 operand){ (void)operand; }
+void RP2A03::STX(U16 operand){ (void)operand; }
+void RP2A03::STY(U16 operand){ (void)operand; }
+void RP2A03::TAX(U16 operand){ (void)operand; }
+void RP2A03::TAY(U16 operand){ (void)operand; }
+void RP2A03::TSX(U16 operand){ (void)operand; }
+void RP2A03::TXA(U16 operand){ (void)operand; }
+void RP2A03::TXS(U16 operand){ (void)operand; }
+void RP2A03::TYA(U16 operand){ (void)operand; }
+void RP2A03::PHA(U16 operand){ (void)operand; }
+void RP2A03::PHP(U16 operand){ (void)operand; }
+void RP2A03::PLA(U16 operand){ (void)operand; }
+void RP2A03::PLP(U16 operand){ (void)operand; }
+void RP2A03::ASL(U16 operand){ (void)operand; }
+void RP2A03::LSR(U16 operand){ (void)operand; }
+void RP2A03::ROL(U16 operand){ (void)operand; }
+void RP2A03::ROR(U16 operand){ (void)operand; }
+void RP2A03::AND(U16 operand){ (void)operand; }
+void RP2A03::BIT(U16 operand){ (void)operand; }
+void RP2A03::EOR(U16 operand){ (void)operand; }
+void RP2A03::ORA(U16 operand){ (void)operand; }
+void RP2A03::ADC(U16 operand){ (void)operand; }
+void RP2A03::CMP(U16 operand){ (void)operand; }
+void RP2A03::CPX(U16 operand){ (void)operand; }
+void RP2A03::CPY(U16 operand){ (void)operand; }
+void RP2A03::SBC(U16 operand){ (void)operand; }
+void RP2A03::DEC(U16 operand){ (void)operand; } 
+void RP2A03::DEX(U16 operand){ (void)operand; } 
+void RP2A03::DEY(U16 operand){ (void)operand; } 
+void RP2A03::INC(U16 operand){ (void)operand; } 
+void RP2A03::INX(U16 operand){ (void)operand; }
+void RP2A03::INY(U16 operand){ (void)operand; }
+void RP2A03::BRK(U16 operand){ (void)operand; }
+void RP2A03::JMP(U16 operand){ (void)operand; }
+void RP2A03::JSR(U16 operand){ (void)operand; }
+void RP2A03::RTI(U16 operand){ (void)operand; }
+void RP2A03::RTS(U16 operand){ (void)operand; }
+void RP2A03::BCC(U16 operand){ (void)operand; }
+void RP2A03::BCS(U16 operand){ (void)operand; }
+void RP2A03::BEQ(U16 operand){ (void)operand; }
+void RP2A03::BMI(U16 operand){ (void)operand; }
+void RP2A03::BNE(U16 operand){ (void)operand; }
+void RP2A03::BPL(U16 operand){ (void)operand; } 
+void RP2A03::BVC(U16 operand){ (void)operand; }
+void RP2A03::BVS(U16 operand){ (void)operand; }
+void RP2A03::CLC(U16 operand){ (void)operand; }
+void RP2A03::CLD(U16 operand){ (void)operand; }
+void RP2A03::CLI(U16 operand){ (void)operand; }
+void RP2A03::CLV(U16 operand){ (void)operand; }
+void RP2A03::SEC(U16 operand){ (void)operand; }
+void RP2A03::SED(U16 operand){ (void)operand; }
+void RP2A03::SEI(U16 operand){ (void)operand; }
+void RP2A03::NOP(U16 operand){ (void)operand; }
+void RP2A03::NII(U16 operand){ (void)operand; }

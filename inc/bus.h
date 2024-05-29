@@ -1,11 +1,14 @@
 #ifndef BUS_H
 #define BUS_H
 
+#include <memory>
 #include "global.h"
+#include "nesmemory.h"
 
 class Bus
 {
     private:
+        std::unique_ptr<NESMemory> nes_memory;
 
     public:
         Bus();
