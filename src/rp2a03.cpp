@@ -32,6 +32,7 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
     switch(instr->addrMode)
     {
         case AddrMode::absin:
+        {
             /* In absolute indirect addressing, the second byte of the instruction contains the
                low order byte of a memory location. The high order byte of that memory location
                are contained in the third byte of the instruction. */
@@ -46,7 +47,9 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
 
             instr->operand = targetAddress; 
             break;
+        }
         case AddrMode::absol:
+        {
             /* In absolute addressing, the second byte of the instruction specifies the eight low
                order bits of the effective address while the third byte specifies the eight high
                order bits */
@@ -56,32 +59,49 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
             U16 effectiveAddress = (highByte << 8) | lowByte;
             instr->operand = effectiveAddress;
             break;
+        }
         case AddrMode::accum:
+        {
             /* In accumulator addressing, the one byte instruction implies operation on the accumulator (A)
                register. */
 
             instr->operand = A;
             break;
+        }
         case AddrMode::immed:
+        {
             /* In immediate addressing, the second byte of the instruction contains the operand, with no
                further memory addressing required. */
 
             U8 immediateValue = memBus->readFromBus(PC + 1);
             instr->operand = immediateValue;
             break;
+        }
         case AddrMode::impli:
+        {
             /* In implied addressing, the address containing the operand is implicitly stated in the opcode
                mnumonic. */
+            
+            instr->operand = 0;
             break;
+        }
+        case AddrMode::nivim:
+        {
+            instr->operand = 0;
+            break;
+        }
         case AddrMode::relat:
+        {
             /* In relative addressing, the second byte of the instruction is an operand. This operand
                is an offset which is added to the program counter when the counter is set at the next
                instruction. The range of the offset is -128 - +127 (signed byte). */
 
             int8_t offset = static_cast<int8_t>(memBus->readFromBus(PC + 1));
             instr->operand = PC + offset;
-            break;		
+            break;
+        }
         case AddrMode::xiabs:
+        {
             /* In X-indexed absolute addressing, the effective address is formed by adding the contents
              of the X register to the address contained in the second and third bytes of the instruction. */
 
@@ -92,7 +112,9 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
             U16 effectiveAddress = address + X;
             instr->operand = effectiveAddress;
             break;
+        }
         case AddrMode::xizpg:
+        {
             /* In X-indexed zero page adressing, the effective address is calculated by adding the
                second byte to the contents of the X index (X) register. Since this is a form of zero
                page addressing, the content of the second byte references a location in zero page memory.
@@ -107,7 +129,9 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
 
             instr->operand = effectiveAddress;
             break;
+        }
         case AddrMode::xizpi:
+        {
             /* In X-index zero page indirect addressing, the second byte of the instruction is added to
                the contents of the X index (X) register and discards the carry. The result of this addition
                points to a memory location on page zero which contains the low order byte of the effective
@@ -124,7 +148,9 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
 
             instr->operand = finalAddress;
             break;
+        }
         case AddrMode::yiabs:
+        {
             /* In Y-indexed absolute addressing, the effective address is formed by adding the contents
                of the Y register to the address contained in the second and third bytes of the instruction. */
 
@@ -135,7 +161,9 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
             U16 effectiveAddress = address + Y;
             instr->operand = effectiveAddress;
             break;
+        }
         case AddrMode::yizpg:
+        {
             /* In Y-indexed zero page adressing, the effective address is calculated by adding the
                second byte to the contents of the Y index (Y) register. Since this is a form of zero
                page addressing, the content of the second byte references a location in zero page memory.
@@ -150,7 +178,9 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
             
             instr->operand = effectiveAddress;
             break;
+        }
         case AddrMode::yizpi:
+        {
             /* In Y-index zero page indirect addressing, the second byte of the instruction is added to
                the contents of the Y index (Y) register and discards the carry. The result of this addition
                points to a memory location on page zero which contains the low order byte of the effective
@@ -167,7 +197,9 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
 
             instr->operand = finalAddress;
             break;
+        }
         case AddrMode::zpage:
+        {
             /* In zero page addressing, the second byte of the insturction contains the low order byte of a
                memory location. The high byte of the memory location is assumed to be zero (0x00) */
 
@@ -178,11 +210,14 @@ void RP2A03::applyAddressingMode(Instr_t* instr)
 
             instr->operand = zeroPageAddress;
             break;
+        }
         default: /* AddrMode::nivim */
+        {
             /* Null Instruction Vector Index Mode: Invalid opcode */
             
             instr->operand = 0;
             break;
+        }
     }
 }
 
@@ -263,7 +298,7 @@ void RP2A03::IRQ(){}
  */
 void RP2A03::LDA(U16 operand)
 {
-    // Load the value of a into the accumulator
+    // Load the value of the operand into the accumulator
     A = operand;
 
     U8 flags = Flags::CLEAR;
